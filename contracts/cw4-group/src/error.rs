@@ -19,4 +19,10 @@ pub enum ContractError {
 
     #[error("Unauthorized")]
     Unauthorized {},
+
+    #[error("MaxWeightExceeded")]
+    MaxWeightExceeded {},
+
+    #[error("MinWeightNotMet")]
+    MinWeightNotMet {},
 }

@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError,
-    StdResult, SubMsg, Uint64,
+    attr, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdResult,
+    SubMsg, Uint64,
 };
 use cw2::set_contract_version;
 use cw4::{MemberChangedHookMsg, MemberDiff, TotalWeightResponse};
@@ -60,7 +60,7 @@ pub fn create(
         )?;
     }
     TOTAL.save(deps.storage, &total.u64(), height)?;
-
+    assert_weights(deps.as_ref())?;
     Ok(())
 }
 
@@ -234,7 +234,7 @@ pub fn query_list_members(
     Ok(MemberListResponse { members })
 }
 
-fn assert_weights(deps: Deps) -> StdResult<()> {
+fn assert_weights(deps: Deps) -> Result<(), ContractError> {
     let min = MIN_WEIGHT.load(deps.storage)?;
     let max = MAX_WEIGHT.load(deps.storage)?;
     let total = MEMBERS
@@ -244,11 +244,11 @@ fn assert_weights(deps: Deps) -> StdResult<()> {
             _ => t,
         });
     if total > max {
-        return Err(StdError::generic_err("max weight exceeded"));
+        return Err(ContractError::MaxWeightExceeded {});
     };
 
     if total < min {
-        return Err(StdError::generic_err("min weight not reached"));
+        return Err(ContractError::MinWeightNotMet {});
     };
 
     Ok(())
