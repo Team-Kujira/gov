@@ -18,7 +18,6 @@ For more information on this contract, please check out the
 
 pub mod contract;
 mod error;
-mod integration_tests;
 pub mod msg;
 pub mod state;
 
