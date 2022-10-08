@@ -1,4 +1,4 @@
-# CosmWasm Plus
+# Kujira Governance
 
 Governance contracts for the Kujira blockchain, forked from [cw-plus](https://github.com/CosmWasm/cw-plus). Please see that repository for a detailed breakdown.
 
