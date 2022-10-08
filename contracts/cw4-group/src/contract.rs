@@ -1,20 +1,18 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdResult,
-    SubMsg, Uint64,
+    attr, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError,
+    StdResult, SubMsg, Uint64,
 };
 use cw2::set_contract_version;
-use cw4::{
-    Member, MemberChangedHookMsg, MemberDiff, MemberListResponse, MemberResponse,
-    TotalWeightResponse,
-};
+use cw4::{MemberChangedHookMsg, MemberDiff, TotalWeightResponse};
 use cw_storage_plus::Bound;
 use cw_utils::maybe_addr;
 
 use crate::error::ContractError;
+use crate::member::{Member, MemberListResponse, MemberResponse};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ADMIN, HOOKS, MEMBERS, TOTAL};
+use crate::state::{ADMIN, HOOKS, MAX_WEIGHT, MEMBERS, MIN_WEIGHT, TOTAL};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw4-group";
@@ -30,6 +28,8 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    MAX_WEIGHT.save(deps.storage, &msg.max_weight)?;
+    MIN_WEIGHT.save(deps.storage, &msg.min_weight)?;
     create(deps, msg.admin, msg.members, env.block.height)?;
     Ok(Response::default())
 }
@@ -52,7 +52,12 @@ pub fn create(
         let member_weight = Uint64::from(member.weight);
         total = total.checked_add(member_weight)?;
         let member_addr = deps.api.addr_validate(&member.addr)?;
-        MEMBERS.save(deps.storage, &member_addr, &member_weight.u64(), height)?;
+        MEMBERS.save(
+            deps.storage,
+            &member_addr,
+            &(member_weight.u64(), member.keybase_id),
+            height,
+        )?;
     }
     TOTAL.save(deps.storage, &total.u64(), height)?;
 
@@ -106,6 +111,7 @@ pub fn execute_update_members(
     let messages = HOOKS.prepare_hooks(deps.storage, |h| {
         diff.clone().into_cosmos_msg(h).map(SubMsg::new)
     })?;
+    assert_weights(deps.as_ref())?;
     Ok(Response::new()
         .add_submessages(messages)
         .add_attributes(attributes))
@@ -128,10 +134,14 @@ pub fn update_members(
     for add in to_add.into_iter() {
         let add_addr = deps.api.addr_validate(&add.addr)?;
         MEMBERS.update(deps.storage, &add_addr, height, |old| -> StdResult<_> {
-            total = total.checked_sub(Uint64::from(old.unwrap_or_default()))?;
+            total = total.checked_sub(Uint64::from(old.clone().unwrap_or_default().0))?;
             total = total.checked_add(Uint64::from(add.weight))?;
-            diffs.push(MemberDiff::new(add.addr, old, Some(add.weight)));
-            Ok(add.weight)
+            diffs.push(MemberDiff::new(
+                add.addr,
+                old.map(|x| x.0),
+                Some(add.weight),
+            ));
+            Ok((add.weight, add.keybase_id))
         })?;
     }
 
@@ -139,7 +149,7 @@ pub fn update_members(
         let remove_addr = deps.api.addr_validate(&remove)?;
         let old = MEMBERS.may_load(deps.storage, &remove_addr)?;
         // Only process this if they were actually in the list before
-        if let Some(weight) = old {
+        if let Some((weight, _keybase_id)) = old {
             diffs.push(MemberDiff::new(remove, Some(weight), None));
             total = total.checked_sub(Uint64::from(weight))?;
             MEMBERS.remove(deps.storage, &remove_addr, height)?;
@@ -147,6 +157,7 @@ pub fn update_members(
     }
 
     TOTAL.save(deps.storage, &total.u64(), height)?;
+    assert_weights(deps.as_ref())?;
     Ok(MemberChangedHookMsg { diffs })
 }
 
@@ -179,11 +190,20 @@ pub fn query_total_weight(deps: Deps, height: Option<u64>) -> StdResult<TotalWei
 
 pub fn query_member(deps: Deps, addr: String, height: Option<u64>) -> StdResult<MemberResponse> {
     let addr = deps.api.addr_validate(&addr)?;
-    let weight = match height {
+    let res = match height {
         Some(h) => MEMBERS.may_load_at_height(deps.storage, &addr, h),
         None => MEMBERS.may_load(deps.storage, &addr),
     }?;
-    Ok(MemberResponse { weight })
+    match res {
+        Some((weight, keybase_id)) => Ok(MemberResponse {
+            weight: Some(weight),
+            keybase_id: Some(keybase_id),
+        }),
+        None => Ok(MemberResponse {
+            weight: None,
+            keybase_id: None,
+        }),
+    }
 }
 
 // settings for pagination
@@ -203,12 +223,33 @@ pub fn query_list_members(
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .map(|item| {
-            item.map(|(addr, weight)| Member {
+            item.map(|(addr, (weight, keybase_id))| Member {
                 addr: addr.into(),
                 weight,
+                keybase_id,
             })
         })
-        .collect::<StdResult<_>>()?;
+        .collect::<StdResult<Vec<Member>>>()?;
 
     Ok(MemberListResponse { members })
+}
+
+fn assert_weights(deps: Deps) -> StdResult<()> {
+    let min = MIN_WEIGHT.load(deps.storage)?;
+    let max = MAX_WEIGHT.load(deps.storage)?;
+    let total = MEMBERS
+        .range(deps.storage, None, None, Order::Ascending)
+        .fold(0u64, |t, m| match m {
+            Ok((_, (w, _))) => t + w,
+            _ => t,
+        });
+    if total > max {
+        return Err(StdError::generic_err("max weight exceeded"));
+    };
+
+    if total < min {
+        return Err(StdError::generic_err("min weight not reached"));
+    };
+
+    Ok(())
 }

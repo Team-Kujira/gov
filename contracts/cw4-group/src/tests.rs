@@ -1,11 +1,12 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 use cosmwasm_std::{from_slice, Addr, Api, DepsMut, OwnedDeps, Querier, Storage, SubMsg};
-use cw4::{member_key, Member, MemberChangedHookMsg, MemberDiff, TOTAL_KEY};
+use cw4::{member_key, MemberChangedHookMsg, MemberDiff, TOTAL_KEY};
 use cw_controllers::{AdminError, HookError};
 
 use crate::contract::{
     execute, instantiate, query_list_members, query_member, query_total_weight, update_members,
 };
+use crate::member::Member;
 use crate::msg::{ExecuteMsg, InstantiateMsg};
 use crate::state::{ADMIN, HOOKS};
 
@@ -21,12 +22,16 @@ fn do_instantiate(deps: DepsMut) {
             Member {
                 addr: USER1.into(),
                 weight: 11,
+                keybase_id: "keybase_id".to_string(),
             },
             Member {
                 addr: USER2.into(),
                 weight: 6,
+                keybase_id: "keybase_id_2".to_string(),
             },
         ],
+        min_weight: 0,
+        max_weight: 100,
     };
     let info = mock_info("creator", &[]);
     instantiate(deps, mock_env(), info, msg).unwrap();
@@ -105,6 +110,7 @@ fn add_new_remove_old_member() {
     let add = vec![Member {
         addr: USER3.into(),
         weight: 15,
+        keybase_id: "keybase_id".to_string(),
     }];
     let remove = vec![USER1.into()];
 
@@ -154,6 +160,7 @@ fn add_old_remove_new_member() {
     let add = vec![Member {
         addr: USER1.into(),
         weight: 4,
+        keybase_id: "keybase_id".to_string(),
     }];
     let remove = vec![USER3.into()];
 
@@ -181,10 +188,12 @@ fn add_and_remove_same_member() {
         Member {
             addr: USER1.into(),
             weight: 20,
+            keybase_id: "keybase_id".to_string(),
         },
         Member {
             addr: USER3.into(),
             weight: 5,
+            keybase_id: "keybase_id".to_string(),
         },
     ];
     let remove = vec![USER1.into()];
@@ -300,10 +309,12 @@ fn hooks_fire() {
         Member {
             addr: USER1.into(),
             weight: 20,
+            keybase_id: "keybase_id".to_string(),
         },
         Member {
             addr: USER3.into(),
             weight: 5,
+            keybase_id: "keybase_id".to_string(),
         },
     ];
     let remove = vec![USER2.into()];
