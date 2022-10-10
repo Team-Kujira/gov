@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{CosmosMsg, Empty};
+use cosmwasm_std::{Addr, Coin, CosmosMsg, Empty};
 use cw_utils::{Expiration, ThresholdResponse};
 
 use crate::msg::Vote;
@@ -67,6 +67,8 @@ where
     /// as well as the total_weight of the voting group may have changed since this time. That means
     /// that the generic `Threshold{}` query does not provide valid information for existing proposals.
     pub threshold: ThresholdResponse,
+    pub submitter: Addr,
+    pub deposit: Vec<Coin>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, JsonSchema, Debug)]
@@ -83,6 +85,8 @@ pub enum Status {
     Passed = 4,
     /// voting is over it passed, and the proposal was executed
     Executed = 5,
+    /// voting is over and veto votes have met the threshold
+    Vetoed = 6,
 }
 
 #[cw_serde]

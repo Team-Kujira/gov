@@ -269,8 +269,6 @@ dependencies = [
 [[package]]
 name = "cw3"
 version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba0aa457d0fcc9022355f520a4f0ddee24a219d85c81384b14e3d15b1cf8f73"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",

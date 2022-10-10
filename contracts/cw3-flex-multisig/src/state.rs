@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, QuerierWrapper};
+use cosmwasm_std::{Addr, Coin, QuerierWrapper};
 use cw4::Cw4Contract;
 use cw_storage_plus::Item;
 use cw_utils::{Duration, Threshold};
@@ -24,6 +24,8 @@ pub struct Config {
     // who is able to execute passed proposals
     // None means that anyone can execute
     pub executor: Option<Executor>,
+
+    pub deposit: Coin,
 }
 
 impl Config {
@@ -47,6 +49,19 @@ impl Config {
             }
         }
         Ok(())
+    }
+
+    pub fn validate_deposit(&self, funds: Vec<Coin>) -> Result<Vec<Coin>, ContractError> {
+        match &funds[..] {
+            [x] => {
+                if x.denom == self.deposit.denom && x.amount >= self.deposit.amount {
+                    Ok(vec![x.clone()])
+                } else {
+                    Err(ContractError::InvalidDeposit {})
+                }
+            }
+            _ => Err(ContractError::InvalidDeposit {}),
+        }
     }
 }
 

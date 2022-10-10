@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, BlockInfo, CosmosMsg, Decimal, Empty, StdResult, Storage, Uint128};
+use cosmwasm_std::{Addr, BlockInfo, Coin, CosmosMsg, Decimal, Empty, StdResult, Storage, Uint128};
 
 use cw3::{Status, Vote};
 use cw_storage_plus::{Item, Map};
@@ -30,6 +30,10 @@ pub struct Proposal {
     pub total_weight: u64,
     // summary of existing votes
     pub votes: Votes,
+    // The address of the account submitting the proposal
+    pub submitter: Addr,
+    // The deposit supplied with the proposal
+    pub deposit: Vec<Coin>,
 }
 
 impl Proposal {
@@ -42,8 +46,13 @@ impl Proposal {
         if status == Status::Open && self.is_passed(block) {
             status = Status::Passed;
         }
+
         if status == Status::Open && (self.is_rejected(block) || self.expires.is_expired(block)) {
             status = Status::Rejected;
+        }
+
+        if status == Status::Open && self.is_vetoed(block) {
+            status = Status::Vetoed;
         }
 
         status
@@ -121,10 +130,47 @@ impl Proposal {
             }
         }
     }
+
+    /// Returns true if this proposal is sure to be vetoed (even before expiration, if
+    /// no future sequence of possible votes could cause it to pass).
+    pub fn is_vetoed(&self, block: &BlockInfo) -> bool {
+        match self.threshold {
+            Threshold::AbsoluteCount {
+                weight: weight_needed,
+            } => {
+                let weight = self.total_weight - weight_needed;
+                self.votes.veto > weight
+            }
+            Threshold::AbsolutePercentage {
+                percentage: percentage_needed,
+            } => {
+                self.votes.veto
+                    > votes_needed(
+                        self.total_weight - self.votes.abstain,
+                        Decimal::one() - percentage_needed,
+                    )
+            }
+            Threshold::ThresholdQuorum {
+                threshold,
+                quorum: _,
+            } => {
+                if self.expires.is_expired(block) {
+                    // If expired, we compare vote_count against the total number of votes (minus abstain).
+                    let opinions = self.votes.total() - self.votes.abstain;
+                    self.votes.veto > votes_needed(opinions, Decimal::one() - threshold)
+                } else {
+                    // If not expired, we must assume all non-votes will be cast for
+                    let possible_opinions = self.total_weight - self.votes.abstain;
+                    self.votes.veto > votes_needed(possible_opinions, Decimal::one() - threshold)
+                }
+            }
+        }
+    }
 }
 
 // weight of votes for each option
 #[cw_serde]
+#[derive(Default)]
 pub struct Votes {
     pub yes: u64,
     pub no: u64,
@@ -246,6 +292,8 @@ mod test {
             threshold,
             total_weight,
             votes,
+            submitter: Addr::unchecked("submitter"),
+            deposit: vec![],
         };
 
         (prop, block)

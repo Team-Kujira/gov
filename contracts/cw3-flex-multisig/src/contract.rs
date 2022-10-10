@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, BlockInfo, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Order,
-    Response, StdResult,
+    to_binary, BankMsg, Binary, BlockInfo, Coin, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo,
+    Order, Response, StdResult,
 };
 
 use cw2::set_contract_version;
@@ -47,6 +47,7 @@ pub fn instantiate(
         max_voting_period: msg.max_voting_period,
         group_addr,
         executor: msg.executor,
+        deposit: msg.deposit,
     };
     CONFIG.save(deps.storage, &cfg)?;
 
@@ -89,15 +90,8 @@ pub fn execute_propose(
     // only members of the multisig can create a proposal
     let cfg = CONFIG.load(deps.storage)?;
 
-    // Only members of the multisig can create a proposal
-    // Non-voting members are special - they are allowed to create a proposal and
-    // therefore "vote", but they aren't allowed to vote otherwise.
-    // Such vote is also special, because despite having 0 weight it still counts when
-    // counting threshold passing
-    let vote_power = cfg
-        .group_addr
-        .is_member(&deps.querier, &info.sender, None)?
-        .ok_or(ContractError::Unauthorized {})?;
+    // A proposal can be created by anyone, but a deposit must be provided
+    let deposit = cfg.validate_deposit(info.funds)?;
 
     // max expires also used as default
     let max_expires = cfg.max_voting_period.after(&env.block);
@@ -117,20 +111,15 @@ pub fn execute_propose(
         expires,
         msgs,
         status: Status::Open,
-        votes: Votes::yes(vote_power),
+        votes: Votes::default(),
         threshold: cfg.threshold,
         total_weight: cfg.group_addr.total_weight(&deps.querier)?,
+        submitter: info.sender.clone(),
+        deposit,
     };
     prop.update_status(&env.block);
     let id = next_id(deps.storage)?;
     PROPOSALS.save(deps.storage, id, &prop)?;
-
-    // add the first yes vote from voter
-    let ballot = Ballot {
-        weight: vote_power,
-        vote: Vote::Yes,
-    };
-    BALLOTS.save(deps.storage, (id, &info.sender), &ballot)?;
 
     Ok(Response::new()
         .add_attribute("action", "propose")
@@ -209,10 +198,11 @@ pub fn execute_execute(
     // set it to executed
     prop.status = Status::Executed;
     PROPOSALS.save(deps.storage, proposal_id, &prop)?;
-
+    let msgs = return_deposit(&prop);
     // dispatch all proposed messages
     Ok(Response::new()
         .add_messages(prop.msgs)
+        .add_messages(msgs)
         .add_attribute("action", "execute")
         .add_attribute("sender", info.sender)
         .add_attribute("proposal_id", proposal_id.to_string()))
@@ -224,7 +214,7 @@ pub fn execute_close(
     info: MessageInfo,
     proposal_id: u64,
 ) -> Result<Response<Empty>, ContractError> {
-    // anyone can trigger this if the vote passed
+    // anyone can trigger this, only if the vote has expired and not passed
 
     let mut prop = PROPOSALS.load(deps.storage, proposal_id)?;
     if [Status::Executed, Status::Rejected, Status::Passed].contains(&prop.status) {
@@ -238,11 +228,18 @@ pub fn execute_close(
         return Err(ContractError::NotExpired {});
     }
 
-    // set it to failed
-    prop.status = Status::Rejected;
+    prop.update_status(&env.block);
+
     PROPOSALS.save(deps.storage, proposal_id, &prop)?;
 
+    let msgs = match prop.status {
+        Status::Rejected => return_deposit(&prop),
+        Status::Vetoed => burn_deposit(&prop),
+        _ => vec![],
+    };
+
     Ok(Response::new()
+        .add_messages(msgs)
         .add_attribute("action", "close")
         .add_attribute("sender", info.sender)
         .add_attribute("proposal_id", proposal_id.to_string()))
@@ -262,6 +259,39 @@ pub fn execute_membership_hook(
     }
 
     Ok(Response::default())
+}
+
+fn return_deposit(prop: &Proposal) -> Vec<CosmosMsg> {
+    let mut amount: Vec<Coin> = vec![];
+    for dep in prop.deposit.clone() {
+        if !dep.amount.is_zero() {
+            amount.push(dep)
+        };
+    }
+
+    if amount.len() > 0 {
+        vec![CosmosMsg::Bank(BankMsg::Send {
+            to_address: prop.submitter.to_string(),
+            amount,
+        })]
+    } else {
+        vec![]
+    }
+}
+
+fn burn_deposit(prop: &Proposal) -> Vec<CosmosMsg> {
+    let mut amount: Vec<Coin> = vec![];
+    for dep in prop.deposit.clone() {
+        if !dep.amount.is_zero() {
+            amount.push(dep)
+        };
+    }
+
+    if amount.len() > 0 {
+        vec![CosmosMsg::Bank(BankMsg::Burn { amount })]
+    } else {
+        vec![]
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -307,6 +337,8 @@ fn query_proposal(deps: Deps, env: Env, id: u64) -> StdResult<ProposalResponse> 
         status,
         expires: prop.expires,
         threshold,
+        submitter: prop.submitter,
+        deposit: prop.deposit,
     })
 }
 
@@ -363,6 +395,8 @@ fn map_proposal(
             status,
             expires: prop.expires,
             threshold,
+            submitter: prop.submitter,
+            deposit: prop.deposit,
         }
     })
 }
@@ -511,6 +545,7 @@ mod tests {
             threshold,
             max_voting_period,
             executor,
+            deposit: coin(10u128, "BTC"),
         };
         app.instantiate_contract(flex_id, Addr::unchecked(OWNER), &msg, &[], "flex", None)
             .unwrap()
@@ -633,6 +668,7 @@ mod tests {
             },
             max_voting_period,
             executor: None,
+            deposit: coin(10u128, "BTC"),
         };
         let err = app
             .instantiate_contract(
@@ -655,6 +691,7 @@ mod tests {
             threshold: Threshold::AbsoluteCount { weight: 100 },
             max_voting_period,
             executor: None,
+            deposit: coin(10u128, "BTC"),
         };
         let err = app
             .instantiate_contract(
@@ -677,6 +714,7 @@ mod tests {
             threshold: Threshold::AbsoluteCount { weight: 1 },
             max_voting_period,
             executor: None,
+            deposit: coin(10u128, "BTC"),
         };
         let flex_addr = app
             .instantiate_contract(
@@ -730,11 +768,11 @@ mod tests {
             setup_test_case_fixed(&mut app, required_weight, voting_period, init_funds, false);
 
         let proposal = pay_somebody_proposal();
-        // Only voters can propose
+        // Sufficient deposit required
         let err = app
             .execute_contract(Addr::unchecked(SOMEBODY), flex_addr.clone(), &proposal, &[])
             .unwrap_err();
-        assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
+        assert_eq!(ContractError::InvalidDeposit {}, err.downcast().unwrap());
 
         // Wrong expiration option fails
         let msgs = match proposal.clone() {
@@ -916,13 +954,15 @@ mod tests {
                 threshold: Decimal::percent(80),
                 quorum: Decimal::percent(20),
             },
+            submitter: Addr::unchecked(VOTER1),
+            deposit: vec![],
         };
         assert_eq!(&expected, &res.proposals[0]);
     }
 
     #[test]
     fn test_vote_works() {
-        let init_funds = coins(10, "BTC");
+        let init_funds = coins(20, "BTC");
         let mut app = mock_app(&init_funds);
 
         let threshold = Threshold::ThresholdQuorum {
@@ -936,7 +976,12 @@ mod tests {
         // create proposal with 0 vote power
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(OWNER), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(OWNER),
+                flex_addr.clone(),
+                &proposal,
+                &coins(10u128, "BTC"),
+            )
             .unwrap();
 
         // Get the proposal id from the logs

@@ -19,6 +19,12 @@ CW4 Group:
   It fulfills all elements of the spec, including raw query lookups,
   and is designed to be used as a backing storage for [cw3 compliant contracts](./packages/cw3/README.md).
 
+## Deployed Code
+
+### Testnet
+
+- cw4: 166
+
 ## Licenses
 
 This repo contains two license, [Apache 2.0](./LICENSE-APACHE) and

@@ -21,7 +21,7 @@ library = []
 cosmwasm-schema = { version = "1.1.0" }
 cw-utils = { version = "0.15.1" }
 cw2 = { version = "0.15.1" }
-cw3 = { version = "0.15.1" }
+cw3 = { path = "../../packages/cw3", version = "0.15.1" }
 cw3-fixed-multisig = { path = "../cw3-fixed-multisig", version = "0.15.1", features = ["library"] }
 cw4 = { version = "0.15.1" }
 cw-storage-plus = { version = "0.15.1" }

@@ -112,6 +112,8 @@ pub fn execute_propose(
         votes: Votes::yes(vote_power),
         threshold: cfg.threshold,
         total_weight: cfg.total_weight,
+        submitter: info.sender.clone(),
+        deposit: vec![],
     };
     prop.update_status(&env.block);
     let id = next_id(deps.storage)?;
@@ -277,6 +279,8 @@ fn query_proposal(deps: Deps, env: Env, id: u64) -> StdResult<ProposalResponse> 
         status,
         expires: prop.expires,
         threshold,
+        submitter: prop.submitter,
+        deposit: prop.deposit,
     })
 }
 
@@ -333,6 +337,8 @@ fn map_proposal(
             status,
             expires: prop.expires,
             threshold,
+            submitter: prop.submitter,
+            deposit: prop.deposit,
         }
     })
 }
