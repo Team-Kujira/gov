@@ -47,12 +47,13 @@ impl Proposal {
             status = Status::Passed;
         }
 
-        if status == Status::Open && (self.is_rejected(block) || self.expires.is_expired(block)) {
-            status = Status::Rejected;
-        }
-
-        if status == Status::Open && self.is_vetoed(block) {
-            status = Status::Vetoed;
+        if status == Status::Open {
+            if self.is_rejected(block) || self.expires.is_expired(block) {
+                status = Status::Rejected;
+            }
+            if self.is_vetoed(block) {
+                status = Status::Vetoed;
+            }
         }
 
         status

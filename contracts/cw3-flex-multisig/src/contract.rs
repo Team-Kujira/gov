@@ -242,7 +242,6 @@ pub fn execute_close(
     prop.update_status(&env.block);
 
     PROPOSALS.save(deps.storage, proposal_id, &prop)?;
-
     let msgs = match prop.status {
         Status::Rejected => return_deposit(&prop),
         Status::Vetoed => burn_deposit(&prop),
@@ -479,7 +478,7 @@ fn list_voters(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{coin, coins, Addr, BankMsg, Coin, Decimal, Timestamp};
+    use cosmwasm_std::{coin, coins, Addr, BankMsg, Coin, Decimal, Timestamp, Uint128};
 
     use cw2::{query_contract_info, ContractVersion};
     use cw4::{Cw4ExecuteMsg, Member};
@@ -1376,6 +1375,95 @@ mod tests {
             ContractError::WrongExecuteStatus {},
             err.downcast().unwrap()
         );
+
+        // Assert deposit is returned
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked(OWNER), "BTC")
+                .unwrap()
+                .amount,
+            Uint128::from(10u128)
+        );
+    }
+
+    #[test]
+    fn test_close_with_veto_works() {
+        let mut app = mock_app(&coins(20, "BTC"));
+
+        let threshold = Threshold::ThresholdQuorum {
+            threshold: Decimal::percent(51),
+            quorum: Decimal::percent(1),
+        };
+        let voting_period = 2000000;
+        let (flex_addr, _) = setup_test_case(
+            &mut app,
+            threshold,
+            Duration::Time(voting_period),
+            coins(10, "BTC"),
+            true,
+            None,
+        );
+
+        // ensure we have cash to cover the proposal
+        let contract_bal = app.wrap().query_balance(&flex_addr, "BTC").unwrap();
+        assert_eq!(contract_bal, coin(10, "BTC"));
+
+        // create proposal with 0 vote power
+        let proposal = pay_somebody_proposal();
+        let res = app
+            .execute_contract(
+                Addr::unchecked(OWNER),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
+            .unwrap();
+
+        // Get the proposal id from the logs
+        let proposal_id: u64 = res.custom_attrs(1)[2].value.parse().unwrap();
+
+        // Vote it, so it fails with veto
+        let vote = ExecuteMsg::Vote {
+            proposal_id,
+            vote: Vote::Veto,
+        };
+        let res = app
+            .execute_contract(Addr::unchecked(VOTER4), flex_addr.clone(), &vote, &[])
+            .unwrap();
+        assert_eq!(
+            res.custom_attrs(1),
+            [
+                ("action", "vote"),
+                ("sender", VOTER4),
+                ("proposal_id", proposal_id.to_string().as_str()),
+                ("status", "Open"),
+            ],
+        );
+
+        app.update_block(|block| {
+            block.time = block.time.plus_seconds(voting_period);
+            block.height += std::cmp::max(1, voting_period / 5);
+        });
+
+        let closing = ExecuteMsg::Close { proposal_id };
+        app.execute_contract(Addr::unchecked(OWNER), flex_addr.clone(), &closing, &[])
+            .unwrap();
+
+        // Assert neither the multisig nor the depositor have the depoit
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked(OWNER), "BTC")
+                .unwrap()
+                .amount,
+            // Started with 10, used 5 for deposit
+            Uint128::from(5u128)
+        );
+
+        assert_eq!(
+            app.wrap().query_balance(flex_addr, "BTC").unwrap().amount,
+            // We had 10 to start, +5 deposit, vote failed, -5 burns
+            Uint128::from(10u128)
+        );
     }
 
     #[test]
@@ -2124,6 +2212,22 @@ mod tests {
         // wait until the vote is over, and see it was rejected
         app.update_block(expire(voting_period));
         assert_eq!(prop_status(&app), Status::Rejected);
+
+        app.execute_contract(
+            Addr::unchecked(VOTER2),
+            flex_addr.clone(),
+            &ExecuteMsg::Close { proposal_id },
+            &vec![],
+        )
+        .unwrap();
+        // Check deposit was returned despite rejection
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked(VOTER3), "BTC")
+                .unwrap()
+                .amount,
+            Uint128::from(5u128)
+        );
     }
 
     #[test]
