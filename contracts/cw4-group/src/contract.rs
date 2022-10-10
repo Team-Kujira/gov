@@ -12,7 +12,7 @@ use cw_utils::maybe_addr;
 use crate::error::ContractError;
 use crate::member::{Member, MemberListResponse, MemberResponse};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ADMIN, HOOKS, MAX_WEIGHT, MEMBERS, MIN_WEIGHT, TOTAL};
+use crate::state::{ADMIN, HOOKS, IDS, MAX_WEIGHT, MEMBERS, MIN_WEIGHT, TOTAL};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw4-group";
@@ -52,12 +52,8 @@ pub fn create(
         let member_weight = Uint64::from(member.weight);
         total = total.checked_add(member_weight)?;
         let member_addr = deps.api.addr_validate(&member.addr)?;
-        MEMBERS.save(
-            deps.storage,
-            &member_addr,
-            &(member_weight.u64(), member.keybase_id),
-            height,
-        )?;
+        MEMBERS.save(deps.storage, &member_addr, &member_weight.u64(), height)?;
+        IDS.save(deps.storage, &member_addr, &member.keybase_id)?;
     }
     TOTAL.save(deps.storage, &total.u64(), height)?;
     assert_weights(deps.as_ref())?;
@@ -133,15 +129,12 @@ pub fn update_members(
     // add all new members and update total
     for add in to_add.into_iter() {
         let add_addr = deps.api.addr_validate(&add.addr)?;
+        IDS.save(deps.storage, &add_addr, &add.keybase_id)?;
         MEMBERS.update(deps.storage, &add_addr, height, |old| -> StdResult<_> {
-            total = total.checked_sub(Uint64::from(old.clone().unwrap_or_default().0))?;
+            total = total.checked_sub(Uint64::from(old.clone().unwrap_or_default()))?;
             total = total.checked_add(Uint64::from(add.weight))?;
-            diffs.push(MemberDiff::new(
-                add.addr,
-                old.map(|x| x.0),
-                Some(add.weight),
-            ));
-            Ok((add.weight, add.keybase_id))
+            diffs.push(MemberDiff::new(add.addr, old, Some(add.weight)));
+            Ok(add.weight)
         })?;
     }
 
@@ -149,7 +142,7 @@ pub fn update_members(
         let remove_addr = deps.api.addr_validate(&remove)?;
         let old = MEMBERS.may_load(deps.storage, &remove_addr)?;
         // Only process this if they were actually in the list before
-        if let Some((weight, _keybase_id)) = old {
+        if let Some(weight) = old {
             diffs.push(MemberDiff::new(remove, Some(weight), None));
             total = total.checked_sub(Uint64::from(weight))?;
             MEMBERS.remove(deps.storage, &remove_addr, height)?;
@@ -195,9 +188,9 @@ pub fn query_member(deps: Deps, addr: String, height: Option<u64>) -> StdResult<
         None => MEMBERS.may_load(deps.storage, &addr),
     }?;
     match res {
-        Some((weight, keybase_id)) => Ok(MemberResponse {
+        Some(weight) => Ok(MemberResponse {
             weight: Some(weight),
-            keybase_id: Some(keybase_id),
+            keybase_id: IDS.load(deps.storage, &addr).ok(),
         }),
         None => Ok(MemberResponse {
             weight: None,
@@ -223,10 +216,11 @@ pub fn query_list_members(
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .map(|item| {
-            item.map(|(addr, (weight, keybase_id))| Member {
-                addr: addr.into(),
+            item.map(|(addr, weight)| Member {
+                addr: addr.to_string(),
                 weight,
-                keybase_id,
+                // This should always have been set
+                keybase_id: IDS.load(deps.storage, &addr).unwrap(),
             })
         })
         .collect::<StdResult<Vec<Member>>>()?;
@@ -240,7 +234,7 @@ fn assert_weights(deps: Deps) -> Result<(), ContractError> {
     let total = MEMBERS
         .range(deps.storage, None, None, Order::Ascending)
         .fold(0u64, |t, m| match m {
-            Ok((_, (w, _))) => t + w,
+            Ok((_, w)) => t + w,
             _ => t,
         });
     if total > max {
