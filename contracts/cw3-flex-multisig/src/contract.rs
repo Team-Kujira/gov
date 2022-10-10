@@ -119,6 +119,17 @@ pub fn execute_propose(
     };
     prop.update_status(&env.block);
     let id = next_id(deps.storage)?;
+
+    if let Ok(Some(vote_power)) = cfg.group_addr.is_member(&deps.querier, &info.sender, None) {
+        let ballot = Ballot {
+            weight: vote_power,
+            vote: Vote::Yes,
+        };
+        prop.votes.add_vote(Vote::Yes, vote_power);
+        prop.update_status(&env.block);
+        BALLOTS.save(deps.storage, (id, &info.sender), &ballot)?;
+    };
+
     PROPOSALS.save(deps.storage, id, &prop)?;
 
     Ok(Response::new()
@@ -884,21 +895,52 @@ mod tests {
 
     #[test]
     fn test_proposal_queries() {
-        let init_funds = coins(10, "BTC");
-        let mut app = mock_app(&init_funds);
+        let mut app = mock_app(&coins(50, "BTC"));
 
         let voting_period = Duration::Time(2000000);
         let threshold = Threshold::ThresholdQuorum {
             threshold: Decimal::percent(80),
             quorum: Decimal::percent(20),
         };
-        let (flex_addr, _) =
-            setup_test_case(&mut app, threshold, voting_period, init_funds, false, None);
+        let (flex_addr, _) = setup_test_case(
+            &mut app,
+            threshold,
+            voting_period,
+            coins(10, "BTC"),
+            false,
+            None,
+        );
+
+        app.send_tokens(
+            Addr::unchecked(OWNER),
+            Addr::unchecked(VOTER1),
+            &coins(5, "BTC"),
+        )
+        .unwrap();
+
+        app.send_tokens(
+            Addr::unchecked(OWNER),
+            Addr::unchecked(VOTER4),
+            &coins(5, "BTC"),
+        )
+        .unwrap();
+
+        app.send_tokens(
+            Addr::unchecked(OWNER),
+            Addr::unchecked(VOTER2),
+            &coins(5, "BTC"),
+        )
+        .unwrap();
 
         // create proposal with 1 vote power
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(VOTER1), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(VOTER1),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
             .unwrap();
         let proposal_id1: u64 = res.custom_attrs(1)[2].value.parse().unwrap();
 
@@ -906,7 +948,12 @@ mod tests {
         app.update_block(next_block);
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(VOTER4), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(VOTER4),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
             .unwrap();
         let proposal_id2: u64 = res.custom_attrs(1)[2].value.parse().unwrap();
 
@@ -916,7 +963,12 @@ mod tests {
         // add one more open proposal, 2 votes
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(VOTER2), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(VOTER2),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
             .unwrap();
         let proposal_id3: u64 = res.custom_attrs(1)[2].value.parse().unwrap();
         let proposed_at = app.block_info();
@@ -974,8 +1026,8 @@ mod tests {
                 threshold: Decimal::percent(80),
                 quorum: Decimal::percent(20),
             },
-            submitter: Addr::unchecked(VOTER1),
-            deposit: vec![],
+            submitter: Addr::unchecked(VOTER2),
+            deposit: coins(5, "BTC"),
         };
         assert_eq!(&expected, &res.proposals[0]);
     }
@@ -1160,7 +1212,12 @@ mod tests {
         // create proposal with 0 vote power
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(OWNER), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(OWNER),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
             .unwrap();
 
         // Get the proposal id from the logs
@@ -1212,16 +1269,21 @@ mod tests {
 
     #[test]
     fn test_execute_works() {
-        let init_funds = coins(10, "BTC");
-        let mut app = mock_app(&init_funds);
+        let mut app = mock_app(&coins(20, "BTC"));
 
         let threshold = Threshold::ThresholdQuorum {
             threshold: Decimal::percent(51),
             quorum: Decimal::percent(1),
         };
         let voting_period = Duration::Time(2000000);
-        let (flex_addr, _) =
-            setup_test_case(&mut app, threshold, voting_period, init_funds, true, None);
+        let (flex_addr, _) = setup_test_case(
+            &mut app,
+            threshold,
+            voting_period,
+            coins(10, "BTC"),
+            true,
+            None,
+        );
 
         // ensure we have cash to cover the proposal
         let contract_bal = app.wrap().query_balance(&flex_addr, "BTC").unwrap();
@@ -1230,7 +1292,12 @@ mod tests {
         // create proposal with 0 vote power
         let proposal = pay_somebody_proposal();
         let res = app
-            .execute_contract(Addr::unchecked(OWNER), flex_addr.clone(), &proposal, &[])
+            .execute_contract(
+                Addr::unchecked(OWNER),
+                flex_addr.clone(),
+                &proposal,
+                &coins(5, "BTC"),
+            )
             .unwrap();
 
         // Get the proposal id from the logs
@@ -1753,7 +1820,7 @@ mod tests {
     // trigger the action
     #[test]
     fn execute_group_changes_from_proposal() {
-        let mut app = mock_app(&coins(20, "BTC"));
+        let mut app = mock_app(&coins(30, "BTC"));
 
         let required_weight = 4;
         let voting_period = Duration::Time(20000);
@@ -1768,6 +1835,13 @@ mod tests {
         app.send_tokens(
             Addr::unchecked(OWNER),
             Addr::unchecked(VOTER1),
+            &coins(10, "BTC"),
+        )
+        .unwrap();
+
+        app.send_tokens(
+            Addr::unchecked(OWNER),
+            Addr::unchecked(VOTER3),
             &coins(10, "BTC"),
         )
         .unwrap();
@@ -1854,18 +1928,6 @@ mod tests {
         app.execute_contract(Addr::unchecked(VOTER3), flex_addr.clone(), &yes_vote, &[])
             .unwrap();
         assert_eq!(prop_status(&app, cash_proposal_id), Status::Passed);
-
-        // but cannot open a new one
-        let cash_proposal = pay_somebody_proposal();
-        let err = app
-            .execute_contract(
-                Addr::unchecked(VOTER3),
-                flex_addr.clone(),
-                &cash_proposal,
-                &[],
-            )
-            .unwrap_err();
-        assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
 
         // extra: ensure no one else can call the hook
         let hook_hack = ExecuteMsg::MemberChangedHook(MemberChangedHookMsg {
