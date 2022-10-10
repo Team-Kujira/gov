@@ -53,7 +53,7 @@ pub fn create(
         total = total.checked_add(member_weight)?;
         let member_addr = deps.api.addr_validate(&member.addr)?;
         MEMBERS.save(deps.storage, &member_addr, &member_weight.u64(), height)?;
-        IDS.save(deps.storage, &member_addr, &member.keybase_id)?;
+        IDS.save(deps.storage, &member_addr, &member.identity)?;
     }
     TOTAL.save(deps.storage, &total.u64(), height)?;
     assert_weights(deps.as_ref())?;
@@ -129,7 +129,7 @@ pub fn update_members(
     // add all new members and update total
     for add in to_add.into_iter() {
         let add_addr = deps.api.addr_validate(&add.addr)?;
-        IDS.save(deps.storage, &add_addr, &add.keybase_id)?;
+        IDS.save(deps.storage, &add_addr, &add.identity)?;
         MEMBERS.update(deps.storage, &add_addr, height, |old| -> StdResult<_> {
             total = total.checked_sub(Uint64::from(old.clone().unwrap_or_default()))?;
             total = total.checked_add(Uint64::from(add.weight))?;
@@ -190,11 +190,11 @@ pub fn query_member(deps: Deps, addr: String, height: Option<u64>) -> StdResult<
     match res {
         Some(weight) => Ok(MemberResponse {
             weight: Some(weight),
-            keybase_id: IDS.load(deps.storage, &addr).ok(),
+            identity: IDS.load(deps.storage, &addr).ok(),
         }),
         None => Ok(MemberResponse {
             weight: None,
-            keybase_id: None,
+            identity: None,
         }),
     }
 }
@@ -220,7 +220,7 @@ pub fn query_list_members(
                 addr: addr.to_string(),
                 weight,
                 // This should always have been set
-                keybase_id: IDS.load(deps.storage, &addr).unwrap(),
+                identity: IDS.load(deps.storage, &addr).unwrap(),
             })
         })
         .collect::<StdResult<Vec<Member>>>()?;

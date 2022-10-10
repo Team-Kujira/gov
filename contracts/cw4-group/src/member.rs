@@ -7,7 +7,7 @@ use cosmwasm_schema::cw_serde;
 pub struct Member {
     pub addr: String,
     pub weight: u64,
-    pub keybase_id: String,
+    pub identity: String,
 }
 
 #[cw_serde]
@@ -18,5 +18,5 @@ pub struct MemberListResponse {
 #[cw_serde]
 pub struct MemberResponse {
     pub weight: Option<u64>,
-    pub keybase_id: Option<String>,
+    pub identity: Option<String>,
 }

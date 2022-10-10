@@ -22,12 +22,12 @@ fn do_instantiate(deps: DepsMut) {
             Member {
                 addr: USER1.into(),
                 weight: 11,
-                keybase_id: "keybase_id".to_string(),
+                identity: "identity".to_string(),
             },
             Member {
                 addr: USER2.into(),
                 weight: 6,
-                keybase_id: "keybase_id_2".to_string(),
+                identity: "identity_2".to_string(),
             },
         ],
         min_weight: 0,
@@ -110,7 +110,7 @@ fn add_new_remove_old_member() {
     let add = vec![Member {
         addr: USER3.into(),
         weight: 15,
-        keybase_id: "keybase_id".to_string(),
+        identity: "identity".to_string(),
     }];
     let remove = vec![USER1.into()];
 
@@ -160,7 +160,7 @@ fn add_old_remove_new_member() {
     let add = vec![Member {
         addr: USER1.into(),
         weight: 4,
-        keybase_id: "keybase_id".to_string(),
+        identity: "identity".to_string(),
     }];
     let remove = vec![USER3.into()];
 
@@ -188,12 +188,12 @@ fn add_and_remove_same_member() {
         Member {
             addr: USER1.into(),
             weight: 20,
-            keybase_id: "keybase_id".to_string(),
+            identity: "identity".to_string(),
         },
         Member {
             addr: USER3.into(),
             weight: 5,
-            keybase_id: "keybase_id".to_string(),
+            identity: "identity".to_string(),
         },
     ];
     let remove = vec![USER1.into()];
@@ -309,12 +309,12 @@ fn hooks_fire() {
         Member {
             addr: USER1.into(),
             weight: 20,
-            keybase_id: "keybase_id".to_string(),
+            identity: "identity".to_string(),
         },
         Member {
             addr: USER3.into(),
             weight: 5,
-            keybase_id: "keybase_id".to_string(),
+            identity: "identity".to_string(),
         },
     ];
     let remove = vec![USER2.into()];

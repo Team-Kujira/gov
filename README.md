@@ -4,13 +4,17 @@ Governance contracts for the Kujira blockchain, forked from [cw-plus](https://gi
 
 These are broken down into two contracts: the CW3 Flex Multisig and the CW4 Group contract, as below.
 
-The only changes made is to enforce a max and min weight for all members, to ensure a quality voting set, see https://github.com/Team-Kujira/gov/commit/696dd6655be9e45379dad533560e37cdd7c8e10e
-
 CW3 Multisig:
 
 - [`cw3-flex-multisig`](./contracts/cw3-flex-multisig) builds on cw3-fixed-multisig,
   with a more powerful implementation of the cw3 spec. It's a multisig contract
   backed by a cw4 (group) contract, which independently maintains the voter set.
+
+- We add a `max_weight` and a `min_weight` to the contract config, to constrain the
+  total amount of voting power that the membership can contain
+
+- We add an `identity` field to `Member`, so that members of this voting set can be
+  idenfiied by community members
 
 CW4 Group:
 
@@ -18,6 +22,11 @@ CW4 Group:
   [cw4 spec](./packages/cw4/README.md). It handles elected membership, by admin or multisig.
   It fulfills all elements of the spec, including raw query lookups,
   and is designed to be used as a backing storage for [cw3 compliant contracts](./packages/cw3/README.md).
+
+- We remove the requirement of membership to create proposals, instead replacing it with a deposit requirement
+
+- We extend the proposal status to respoect a `Veto` result, subsequently burning the deposit if these conditions
+  are met.
 
 ## Deployed Code
 
