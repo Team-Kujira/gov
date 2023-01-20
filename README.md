@@ -1,6 +1,6 @@
 # Kujira Governance
 
-Governance contracts for the Kujira blockchain, forked from [cw-plus](https://github.com/CosmWasm/cw-plus). Please see that repository for a detailed breakdown.
+Governance contracts for the Kujira Senate, forked from [cw-plus](https://github.com/CosmWasm/cw-plus). Please see that repository for a detailed breakdown.
 
 These are broken down into two contracts: the CW3 Flex Multisig and the CW4 Group contract, as below.
 
