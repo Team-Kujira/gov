@@ -30,6 +30,12 @@ CW4 Group:
 
 ## Deployed Code
 
+### Mainnet
+
+- cw3: -
+
+- cw4: 80
+
 ### Testnet
 
 - cw3: 169
