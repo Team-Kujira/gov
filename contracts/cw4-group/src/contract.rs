@@ -28,9 +28,14 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    MAX_WEIGHT.save(deps.storage, &msg.max_weight)?;
-    MIN_WEIGHT.save(deps.storage, &msg.min_weight)?;
-    create(deps, msg.admin, msg.members, env.block.height)?;
+    create(
+        deps,
+        msg.admin,
+        msg.members,
+        msg.min_weight,
+        msg.max_weight,
+        env.block.height,
+    )?;
     Ok(Response::default())
 }
 
@@ -40,8 +45,13 @@ pub fn create(
     mut deps: DepsMut,
     admin: Option<String>,
     members: Vec<Member>,
+    min_weight: u64,
+    max_weight: u64,
     height: u64,
 ) -> Result<(), ContractError> {
+    MAX_WEIGHT.save(deps.storage, &max_weight)?;
+    MIN_WEIGHT.save(deps.storage, &min_weight)?;
+
     let admin_addr = admin
         .map(|admin| deps.api.addr_validate(&admin))
         .transpose()?;

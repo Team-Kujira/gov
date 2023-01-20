@@ -32,7 +32,9 @@ CW4 Group:
 
 ### Testnet
 
-- cw4: 166
+- cw3: 169
+
+- cw4: 168: kujira1a5q689l9q777za8v078fgfqaqzhcm0myjy3kv549zfzrl6qv5drstrwk9s
 
 ## Licenses
 
