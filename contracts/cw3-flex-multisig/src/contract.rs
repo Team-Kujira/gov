@@ -496,10 +496,11 @@ mod tests {
     const VOTER5: &str = "voter0005";
     const SOMEBODY: &str = "somebody";
 
-    fn member<T: Into<String>>(addr: T, weight: u64) -> Member {
+    fn member<T: Into<String>>(addr: T, weight: u64, identity: T) -> Member {
         Member {
             addr: addr.into(),
             weight,
+            identity: identity.into(),
         }
     }
 
@@ -536,6 +537,8 @@ mod tests {
         let msg = cw4_group::msg::InstantiateMsg {
             admin: Some(OWNER.into()),
             members,
+            min_weight: 0,
+            max_weight: 100,
         };
         app.instantiate_contract(group_id, Addr::unchecked(OWNER), &msg, &[], "group", None)
             .unwrap()
@@ -595,12 +598,12 @@ mod tests {
     ) -> (Addr, Addr) {
         // 1. Instantiate group contract with members (and OWNER as admin)
         let members = vec![
-            member(OWNER, 0),
-            member(VOTER1, 1),
-            member(VOTER2, 2),
-            member(VOTER3, 3),
-            member(VOTER4, 12), // so that he alone can pass a 50 / 52% threshold proposal
-            member(VOTER5, 5),
+            member(OWNER, 0, "OWNER"),
+            member(VOTER1, 1, "VOTER1"),
+            member(VOTER2, 2, "VOTER2"),
+            member(VOTER3, 3, "VOTER3"),
+            member(VOTER4, 12, "VOTER4"), // so that he alone can pass a 50 / 52% threshold proposal
+            member(VOTER5, 5, "VOTER5"),
         ];
         let group_addr = instantiate_group(app, members);
         app.update_block(next_block);
@@ -664,7 +667,7 @@ mod tests {
         let mut app = mock_app(&[]);
 
         // make a simple group
-        let group_addr = instantiate_group(&mut app, vec![member(OWNER, 1)]);
+        let group_addr = instantiate_group(&mut app, vec![member(OWNER, 1, "OWNER")]);
         let flex_id = app.store_code(contract_flex());
 
         let max_voting_period = Duration::Time(1234567);
@@ -1826,7 +1829,7 @@ mod tests {
         let newbie: &str = "newbie";
         let update_msg = cw4_group::msg::ExecuteMsg::UpdateMembers {
             remove: vec![VOTER3.into()],
-            add: vec![member(VOTER2, 21), member(newbie, 2)],
+            add: vec![member(VOTER2, 21, "VOTER2"), member(newbie, 2, "newbie")],
         };
         app.execute_contract(Addr::unchecked(OWNER), group_addr, &update_msg, &[])
             .unwrap();
@@ -2084,7 +2087,7 @@ mod tests {
         let newbie: &str = "newbie";
         let update_msg = cw4_group::msg::ExecuteMsg::UpdateMembers {
             remove: vec![VOTER3.into()],
-            add: vec![member(VOTER2, 9), member(newbie, 29)],
+            add: vec![member(VOTER2, 9, "VOTER2"), member(newbie, 29, "newbie")],
         };
         app.execute_contract(Addr::unchecked(OWNER), group_addr, &update_msg, &[])
             .unwrap();
@@ -2190,7 +2193,7 @@ mod tests {
         let newbie: &str = "newbie";
         let update_msg = cw4_group::msg::ExecuteMsg::UpdateMembers {
             remove: vec![VOTER3.into()],
-            add: vec![member(VOTER2, 9), member(newbie, 29)],
+            add: vec![member(VOTER2, 9, "VOTER2"), member(newbie, 29, "newbie")],
         };
         app.execute_contract(Addr::unchecked(OWNER), group_addr, &update_msg, &[])
             .unwrap();

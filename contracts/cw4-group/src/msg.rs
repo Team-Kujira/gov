@@ -1,6 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-
-use crate::member::{Member, MemberListResponse, MemberResponse};
+use cw4::{Member, MemberListResponse, MemberResponse};
 
 #[cw_serde]
 pub struct InstantiateMsg {

@@ -17,7 +17,6 @@ For more information on this contract, please check out the
 pub mod contract;
 pub mod error;
 pub mod helpers;
-pub mod member;
 pub mod msg;
 pub mod state;
 

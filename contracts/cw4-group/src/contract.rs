@@ -5,12 +5,12 @@ use cosmwasm_std::{
     SubMsg, Uint64,
 };
 use cw2::set_contract_version;
+use cw4::{Member, MemberListResponse, MemberResponse};
 use cw4::{MemberChangedHookMsg, MemberDiff, TotalWeightResponse};
 use cw_storage_plus::Bound;
 use cw_utils::maybe_addr;
 
 use crate::error::ContractError;
-use crate::member::{Member, MemberListResponse, MemberResponse};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{ADMIN, HOOKS, IDS, MAX_WEIGHT, MEMBERS, MIN_WEIGHT, TOTAL};
 
