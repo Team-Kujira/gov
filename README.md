@@ -32,7 +32,7 @@ CW4 Group:
 
 ### Mainnet
 
-- cw3: 83
+- cw3: 86
 
 - cw4: 80
 
